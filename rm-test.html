@@ -1,4 +1,4 @@
-!doctype html>
+<!doctype html>
 
 <html lang="en">
 <head>
@@ -70,6 +70,8 @@
               </div>            
             </div>
           <div class="row" style="margin-top:12px">
+            <button id="btnAS" class="btn">AS207419 List</button>
+            <button id="btnVultr" class="btn">Vultr List</button>
             <button id="btnRun" class="btn primary">▶ Run Test</button>
             <button id="btnStop" class="btn" disabled>■ Stop</button>
             <button id="btnClear" class="btn">✖ Clear Results</button>
@@ -135,6 +137,42 @@ const DEFAULT_TARGETS = [
 {"region":"🇺🇸 Atlanta, US","host":"atl.i.rm.vg"}
 ];
 
+// Vultr preset list
+const LIST_VULTR = [
+  {"region":"🇿🇦 Johannesburg, ZA","host":"jnb-za-ping.vultr.com"},
+  {"region":"🇮🇳 Bangalore, IN","host":"blr-in-ping.vultr.com"},
+  {"region":"🇮🇳 Delhi NCR, IN","host":"del-in-ping.vultr.com"},
+  {"region":"🇮🇳 Mumbai, IN","host":"bom-in-ping.vultr.com"},
+  {"region":"🇯🇵 Osaka, JP","host":"osk-jp-ping.vultr.com"},
+  {"region":"🇰🇷 Seoul, KR","host":"sel-kor-ping.vultr.com"},
+  {"region":"🇸🇬 Singapore, SG","host":"sgp-ping.vultr.com"},
+  {"region":"🇮🇱 Tel Aviv, IL","host":"tlv-il-ping.vultr.com"},
+  {"region":"🇯🇵 Tokyo, JP","host":"hnd-jp-ping.vultr.com"},
+  {"region":"🇦🇺 Melbourne, AU","host":"mel-au-ping.vultr.com"},
+  {"region":"🇦🇺 Sydney, AU","host":"syd-au-ping.vultr.com"},
+  {"region":"🇳🇱 Amsterdam, NL","host":"ams-nl-ping.vultr.com"},
+  {"region":"🇩🇪 Frankfurt, DE","host":"fra-de-ping.vultr.com"},
+  {"region":"🇬🇧 London, UK","host":"lon-gb-ping.vultr.com"},
+  {"region":"🇪🇸 Madrid, ES","host":"mad-es-ping.vultr.com"},
+  {"region":"🇬🇧 Manchester, UK","host":"man-uk-ping.vultr.com"},
+  {"region":"🇫🇷 Paris, FR","host":"par-fr-ping.vultr.com"},
+  {"region":"🇸🇪 Stockholm, SE","host":"sto-se-ping.vultr.com"},
+  {"region":"🇵🇱 Warsaw, PL","host":"waw-pl-ping.vultr.com"},
+  {"region":"🇺🇸 Atlanta, GA, US","host":"ga-us-ping.vultr.com"},
+  {"region":"🇺🇸 Chicago, IL, US","host":"il-us-ping.vultr.com"},
+  {"region":"🇺🇸 Dallas, TX, US","host":"tx-us-ping.vultr.com"},
+  {"region":"🇺🇸 Honolulu, HI, US","host":"hon-hi-us-ping.vultr.com"},
+  {"region":"🇺🇸 Los Angeles, CA, US","host":"lax-ca-us-ping.vultr.com"},
+  {"region":"🇺🇸 Miami, FL, US","host":"fl-us-ping.vultr.com"},
+  {"region":"🇺🇸 New Jersey (NY Metro), US","host":"nj-us-ping.vultr.com"},
+  {"region":"🇺🇸 Seattle, WA, US","host":"wa-us-ping.vultr.com"},
+  {"region":"🇺🇸 Silicon Valley (SJ), US","host":"sjo-ca-us-ping.vultr.com"},
+  {"region":"🇨🇦 Toronto, CA","host":"tor-ca-ping.vultr.com"},
+  {"region":"🇲🇽 Mexico City, MX","host":"mex-mx-ping.vultr.com"},
+  {"region":"🇨🇱 Santiago, CL","host":"scl-cl-ping.vultr.com"},
+  {"region":"🇧🇷 São Paulo, BR","host":"sao-br-ping.vultr.com"}
+];
+
 // Try to read ?list= URL param with URL-encoded JSON
 function getListFromQuery(){
   const sp = new URLSearchParams(location.search);
@@ -160,6 +198,10 @@ const summary = document.getElementById('summary');
 const thead = document.querySelector('#table thead');
 const protocolSel = document.getElementById('protocol');
 const btnCSV = document.getElementById('btnCSV');
+const btnAS = document.getElementById('btnAS');
+const btnVultr = document.getElementById('btnVultr');
+
+let PROTOCOL_MODE = 'http'; // default to AS207419 (HTTP)
 const resultsMap = new Map(); // host -> {region, host, protocol, stats}
 let sortState = { col: null, asc: true };
 
@@ -176,18 +218,20 @@ function formatMs(x){
   return (Math.round(x*10)/10).toFixed(1);
 }
 
+function getCurrentProtocol(){ return PROTOCOL_MODE === 'http' ? 'http' : 'https'; }
+
 function createRow(target){
+  const scheme = getCurrentProtocol();
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td class="mono">${target.region}</td>
-    <td class="mono"><a href="http://${target.host}/" target="_blank" rel="noreferrer">${target.host}</a></td>
+    <td class="mono"><a href="${scheme}://${target.host}/" target="_blank" rel="noreferrer">${target.host}</a></td>
     <td class="mono" data-k="count">0</td>
     <td class="mono" data-k="min">–</td>
     <td class="mono" data-k="avg">–</td>
     <td class="mono" data-k="max">–</td>
     <td class="mono" data-k="last">–</td>
-    <td class="mono samples" data-k="samples"></td>
-  `;
+    <td class="mono samples" data-k="samples"></td>`;
   tbody.appendChild(tr);
   return tr;
 }
@@ -293,6 +337,7 @@ btnRun.addEventListener('click', async ()=>{
   const runs = Math.max(1, Math.min(100, Number(runsInput.value)||7));
   const timeoutMs = Math.max(500, Number(timeoutInput.value)||5000);
   const mode = document.getElementById('protocol')?.value || 'auto';
+  PROTOCOL_MODE = mode; // keep link scheme (createRow) in sync with dropdown
 
   // Build rows first
   const rows = new Map();
@@ -409,7 +454,7 @@ btnCSV.addEventListener('click', () => {
   const csv = rows.map(r => r.map(cell => {
     const s = String(cell ?? '');
     return /[\",\n]/.test(s) ? '"' + s.replace(/\"/g,'""') + '"' : s;
-  }).join(',')).join('\\n');
+  }).join(',')).join('\n');
 
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
@@ -420,7 +465,17 @@ btnCSV.addEventListener('click', () => {
   document.body.appendChild(a);
   a.click();
   setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
-});
+}); //btnCSV
+
+function setList(list, label, mode){
+  ta.value = JSON.stringify(list, null, 2);
+  PROTOCOL_MODE = mode; // 'http' or 'https'
+  protocolSel.value = mode; // reflect selection in the UI
+  summary.textContent = `List set: ${label} — Protocol: ${mode.toUpperCase()}`;
+}
+
+btnAS.addEventListener('click',   () => setList(DEFAULT_TARGETS, 'AS207419', 'http'));
+btnVultr.addEventListener('click',()=> setList(LIST_VULTR,      'Vultr',    'https'));
 
 </script></body>
 </html>
