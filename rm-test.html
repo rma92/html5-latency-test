@@ -1,4 +1,4 @@
-<!doctype html>
+!doctype html>
 
 <html lang="en">
 <head>
@@ -51,20 +51,29 @@
           <h2>Targets JSON</h2>
           <p class="help">Provide an array of <span class="mono">{ "region": "…", "host": "…" }</span>. You can override this textarea by passing a <span class="mono">?list=</span> URL parameter containing URL‑encoded JSON.</p>
           <textarea id="targets"></textarea>
-          <div class="row" style="margin-top:10px">
-            <div>
-              <label for="runs">Number of runs</label>
-              <input id="runs" type="number" min="1" max="100" step="1" value="7" />
+            <div class="row" style="margin-top:10px">
+              <div>
+                <label for="runs">Number of runs</label>
+                <input id="runs" type="number" min="1" max="100" step="1" value="4" />
+              </div>
+              <div>
+                <label for="timeout">Per-request timeout (ms)</label>
+                <input id="timeout" type="number" min="500" step="100" value="5000" />
+              </div>
+              <div>
+                <label for="protocol">Protocol</label>
+                <select id="protocol" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:#0a1322;color:var(--text)">
+                  <option value="auto">Auto (HTTPS, fallback to HTTP)</option>
+                  <option value="https">HTTPS only</option>
+                  <option value="http" selected>HTTP only</option>
+                </select>
+              </div>            
             </div>
-            <div>
-              <label for="timeout">Per‑request timeout (ms)</label>
-              <input id="timeout" type="number" min="500" step="100" value="5000" />
-            </div>
-          </div>
           <div class="row" style="margin-top:12px">
             <button id="btnRun" class="btn primary">▶ Run Test</button>
             <button id="btnStop" class="btn" disabled>■ Stop</button>
             <button id="btnClear" class="btn">✖ Clear Results</button>
+            <button id="btnCSV" class="btn">⬇ Export CSV</button>
           </div>
           <p class="small" style="margin-top:8px">Tip: we send a small <span class="mono">GET</span> to the root of each host over HTTPS with <span class="mono">mode:"no-cors"</span> and abort immediately after headers arrive. This approximates TCP+TLS handshake + first byte time without downloading bodies.</p>
         </div>
@@ -149,6 +158,9 @@ const btnClear = document.getElementById('btnClear');
 const tbody = document.getElementById('tbody');
 const summary = document.getElementById('summary');
 const thead = document.querySelector('#table thead');
+const protocolSel = document.getElementById('protocol');
+const btnCSV = document.getElementById('btnCSV');
+const resultsMap = new Map(); // host -> {region, host, protocol, stats}
 let sortState = { col: null, asc: true };
 
 
@@ -197,6 +209,19 @@ function updateRow(tr, stats){
   tr.dataset.last = isFinite(stats.last) ? String(stats.last) : '';
 }
 
+async function timeOnceToHost(host, timeoutMs, mode){
+  // mode: 'auto' | 'https' | 'http'
+  const tryOne = async (scheme) => timeOnce(`${scheme}://${host}/`, timeoutMs);
+
+  if (mode === 'https') return await tryOne('https');
+  if (mode === 'http')  return await tryOne('http');
+
+  // auto: try HTTPS first, then fall back to HTTP
+  const r = await tryOne('https');
+  if (r.ok) return r;
+  return await tryOne('http');
+}
+
 async function timeOnce(url, timeoutMs){
   const ctrl = new AbortController();
   const t0 = performance.now();
@@ -217,13 +242,13 @@ async function timeOnce(url, timeoutMs){
   }
 }
 
-async function measureTargetStream(target, runs, timeoutMs, onSample){
+async function measureTargetStream(target, runs, timeoutMs, mode, onSample){  
   const url = `http://${target.host}/`;
   const samples = [];
   let min=Infinity, max=-Infinity, sum=0, last=null;
   for(let i=0;i<runs;i++){
     if(stopRequested) break;
-    const r = await timeOnce(url, timeoutMs);
+const r = await timeOnceToHost(target.host, timeoutMs, mode);
     if(r.ok){
       const ms = r.ms;
       samples.push(ms);
@@ -261,12 +286,13 @@ function setBusy(busy){
 
 btnRun.addEventListener('click', async ()=>{
   stopRequested = false;
-  summary.textContent = 'Running…';
+  summary.textContent = 'Running...';
   setBusy(true);
   tbody.innerHTML = '';
   const targets = parseTargetsInput();
   const runs = Math.max(1, Math.min(100, Number(runsInput.value)||7));
   const timeoutMs = Math.max(500, Number(timeoutInput.value)||5000);
+  const mode = document.getElementById('protocol')?.value || 'auto';
 
   // Build rows first
   const rows = new Map();
@@ -278,8 +304,11 @@ btnRun.addEventListener('click', async ()=>{
 
   await Promise.all(targets.map(async t=>{
     const tr = rows.get(t.host);
-    await measureTargetStream(t, runs, timeoutMs, stats=>{
+//    await measureTargetStream(t, runs, timeoutMs, stats=>{
+   await measureTargetStream(t, runs, timeoutMs, mode, stats=>{
       updateRow(tr, stats);
+     //for CSV export, we cache results:
+      resultsMap.set(t.host, { region: t.region, host: t.host, protocol: mode, stats });
       if (sortState.col) applySort();      
     });
     completed++;
@@ -300,9 +329,10 @@ btnStop.addEventListener('click', ()=>{
   summary.textContent += ' — Stopped.';
 });
 
-btnClear.addEventListener('click', ()=>{
+btnClear.addEventListener('click', () => {
   tbody.innerHTML = '';
   summary.textContent = 'Cleared.';
+  resultsMap.clear();
 });
 
 function clearSortIndicators(){
@@ -352,6 +382,44 @@ thead.addEventListener('click', (e) => {
   const col = th.getAttribute('data-col');
   if (!col) return;
   setSort(col);
+});
+
+btnCSV.addEventListener('click', () => {
+  const header = ['region','host','protocol','count','min_ms','avg_ms','max_ms','last_ms','samples_ms'];
+  const rows = [header];
+
+  for (const {region, host, protocol, stats} of resultsMap.values()){
+    try{
+    const count = stats?.count ?? 0;
+    const min = isFinite(stats?.min) ? stats.min.toFixed(1) : '';
+    const avg = isFinite(stats?.avg) ? stats.avg.toFixed(1) : '';
+    const max = isFinite(stats?.max) ? stats.max.toFixed(1) : '';
+    const last = isFinite(stats?.last) ? stats.last.toFixed(1) : '';
+    const samples = (stats?.samples || [])
+      .map(v => isNaN(v) ? 'ERR' : (Math.round(v*10)/10).toFixed(1))
+      .join(' ');
+    rows.push([region, host, protocol, count, min, avg, max, last, samples]);
+    }
+    catch(error)
+    {
+
+    }
+  }
+
+  const csv = rows.map(r => r.map(cell => {
+    const s = String(cell ?? '');
+    return /[\",\n]/.test(s) ? '"' + s.replace(/\"/g,'""') + '"' : s;
+  }).join(',')).join('\\n');
+
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().replace(/[:.]/g,'-');
+  a.download = `latency-results-${ts}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
 });
 
 </script></body>
