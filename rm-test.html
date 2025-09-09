@@ -1,0 +1,358 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AS207419 Region HTTP Latency Tester</title>
+  <style>
+    :root{--bg:#0b1220;--panel:#111a2c;--muted:#7a8aa0;--text:#e6eef7;--accent:#7dd3fc;--good:#34d399;--warn:#f59e0b;--bad:#ef4444;--border:#1f2a44}
+    html,body{height:100%}
+    body{margin:0;background:linear-gradient(180deg,#0b1220,#0b1220 40%,#0e1627);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Noto Sans","Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji"}
+    .wrap{max-width:1200px;margin:auto;padding:24px}
+    h1{margin:.2rem 0 1rem 0;font-weight:700;font-size:1.35rem}
+    .grid{display:grid;gap:16px;grid-template-columns: 1fr}
+    @media (min-width: 980px){.grid{grid-template-columns: 420px 1fr}}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+    .card h2{font-size:1rem;margin:0 0 .5rem 0}
+    .card .inner{padding:16px}
+    textarea{width:100%;min-height:260px;background:#0a1322;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+    label{display:block;color:var(--muted);font-size:.85rem;margin-bottom:.4rem}
+    input[type="number"],input[type="text"]{width:100%;box-sizing:border-box;padding:10px;border-radius:10px;border:1px solid var(--border);background:#0a1322;color:var(--text)}
+    .row{display:flex;gap:10px;align-items:center}
+    .row > *{flex:1}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#0f1a2b;color:var(--text);cursor:pointer}
+    .btn.primary{background:linear-gradient(180deg,#0ea5e9,#0284c7);border-color:#0ea5e9;color:white}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .help{color:var(--muted);font-size:.85rem}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid var(--border);padding:8px 10px;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#0f1a2b;z-index:1}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+    .pill{display:inline-block;padding:.1rem .45rem;border-radius:999px;border:1px solid var(--border);background:#0b1426;color:var(--text);margin:2px}
+    .stat{display:inline-block;min-width:54px;text-align:right}
+    .ok{color:var(--good)}
+    .warn{color:var(--warn)}
+    .bad{color:var(--bad)}
+    .footer{color:var(--muted);font-size:.8rem;margin-top:14px}
+    .samples{max-height:64px;overflow:auto;white-space:nowrap}
+    .small{font-size:.85rem;color:var(--muted)}
+    th.sortable{cursor:pointer}
+    .sort-ind{opacity:.7;margin-left:4px}
+  
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>AS207419 Region HTTP Latency Tester</h1>
+    <div class="grid">
+      <div class="card">
+        <div class="inner">
+          <h2>Targets JSON</h2>
+          <p class="help">Provide an array of <span class="mono">{ "region": "…", "host": "…" }</span>. You can override this textarea by passing a <span class="mono">?list=</span> URL parameter containing URL‑encoded JSON.</p>
+          <textarea id="targets"></textarea>
+          <div class="row" style="margin-top:10px">
+            <div>
+              <label for="runs">Number of runs</label>
+              <input id="runs" type="number" min="1" max="100" step="1" value="7" />
+            </div>
+            <div>
+              <label for="timeout">Per‑request timeout (ms)</label>
+              <input id="timeout" type="number" min="500" step="100" value="5000" />
+            </div>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <button id="btnRun" class="btn primary">▶ Run Test</button>
+            <button id="btnStop" class="btn" disabled>■ Stop</button>
+            <button id="btnClear" class="btn">✖ Clear Results</button>
+          </div>
+          <p class="small" style="margin-top:8px">Tip: we send a small <span class="mono">GET</span> to the root of each host over HTTPS with <span class="mono">mode:"no-cors"</span> and abort immediately after headers arrive. This approximates TCP+TLS handshake + first byte time without downloading bodies.</p>
+        </div>
+      </div><div class="card">
+    <div class="inner">
+      <h2>Results</h2>
+      <div id="summary" class="help" style="margin-bottom:6px">Waiting to run…</div>
+      <div style="overflow:auto;max-height:65vh;border:1px solid var(--border);border-radius:10px">
+        <table id="table">
+          <thead>
+            <tr>
+              <th class="sortable" data-col="region">Region <span class="sort-ind"></span></th>
+              <th class="sortable" data-col="host">Host <span class="sort-ind"></span></th>
+              <th class="sortable" data-col="count">Count <span class="sort-ind"></span></th>
+              <th class="sortable" data-col="min">Min (ms) <span class="sort-ind"></span></th>
+              <th class="sortable" data-col="avg">Avg (ms) <span class="sort-ind"></span></th>
+              <th class="sortable" data-col="max">Max (ms) <span class="sort-ind"></span></th>
+              <th class="sortable" data-col="last">Last (ms) <span class="sort-ind"></span></th>
+              <th>Samples (ms)</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">Built as a single‑file HTML app. Paste your own list or pass it via <span class="mono">?list=</span> URL param. No external libraries or servers required.</div>
+
+  </div><script>
+// --------- Default Vultr targets (region + host only) ---------
+const DEFAULT_TARGETS = [
+{"region":"🇺🇸 Miami (MIA2), US","host":"mia2.i.rm.vg"},
+{"region":"🇺🇸 New Jersey (EWR)","host":"ewr.i.rm.vg"},
+{"region":"🇺🇸 San Francisco, US","host":"sfo.i.rm.vg"},
+{"region":"🇳🇱 Amsterdam, NL","host":"ams.i.rm.vg"},
+{"region":"🇰🇷 Seoul, KR","host":"icn.i.rm.vg"},
+{"region":"🇬🇧 London, UK","host":"lhr.i.rm.vg"},
+{"region":"🇲🇽 Mexico City, MX","host":"mex.i.rm.vg"},
+{"region":"🇯🇵 Tokyo, JP","host":"nrt.i.rm.vg"},
+{"region":"🇧🇷 São Paulo, BR","host":"sao.i.rm.vg"},
+{"region":"🇸🇬 Singapore, SG","host":"sin.i.rm.vg"},
+{"region":"🇦🇺 Sydney, AU","host":"syd.i.rm.vg"},
+{"region":"🇨🇦 Toronto, CA","host":"tor.i.rm.vg"},
+{"region":"🇱🇺 Luxembourg, LU","host":"lux.i.rm.vg"},
+{"region":"🇺🇸 New Jersey (EWR2)","host":"ewr2.i.rm.vg"},
+{"region":"🇮🇳 Mumbai, IN","host":"bom.i.rm.vg"},
+{"region":"🇮🇳 Mumbai (BOM2), IN","host":"bom2.i.rm.vg"},
+{"region":"🇷🇺 Khabarovsk, RU","host":"khv.i.rm.vg"},
+{"region":"🇺🇸 Seattle, US","host":"sea.i.rm.vg"},
+{"region":"🇺🇸 Chicago, US","host":"ord.i.rm.vg"},
+{"region":"🇺🇸 Dallas, US","host":"dfw.i.rm.vg"},
+{"region":"🇺🇸 Los Angeles, US","host":"lax.i.rm.vg"},
+{"region":"🇺🇸 Washington, DC (IAD), US","host":"iad.i.rm.vg"},
+{"region":"🇺🇸 New Jersey (NY2)","host":"ny2.i.rm.vg"},
+{"region":"🇺🇸 Honolulu, US","host":"hnl.i.rm.vg"},
+{"region":"🇮🇱 Tel Aviv, IS","host":"tlv.i.rm.vg"},
+{"region":"🇺🇸 Atlanta, US","host":"atl.i.rm.vg"}
+];
+
+// Try to read ?list= URL param with URL-encoded JSON
+function getListFromQuery(){
+  const sp = new URLSearchParams(location.search);
+  const raw = sp.get('list');
+  if(!raw) return null;
+  try {
+    const decoded = decodeURIComponent(raw);
+    const parsed = JSON.parse(decoded);
+    if(Array.isArray(parsed)) return parsed;
+  } catch(e) { console.warn('Failed to parse ?list JSON', e); }
+  return null;
+}
+
+// DOM elements
+const ta = document.getElementById('targets');
+const runsInput = document.getElementById('runs');
+const timeoutInput = document.getElementById('timeout');
+const btnRun = document.getElementById('btnRun');
+const btnStop = document.getElementById('btnStop');
+const btnClear = document.getElementById('btnClear');
+const tbody = document.getElementById('tbody');
+const summary = document.getElementById('summary');
+const thead = document.querySelector('#table thead');
+let sortState = { col: null, asc: true };
+
+
+// Initialize textarea
+const initialList = getListFromQuery() || DEFAULT_TARGETS;
+ ta.value = JSON.stringify(initialList, null, 2);
+
+// State
+let stopRequested = false;
+let activeControllers = new Set();
+
+function formatMs(x){
+  return (Math.round(x*10)/10).toFixed(1);
+}
+
+function createRow(target){
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td class="mono">${target.region}</td>
+    <td class="mono"><a href="http://${target.host}/" target="_blank" rel="noreferrer">${target.host}</a></td>
+    <td class="mono" data-k="count">0</td>
+    <td class="mono" data-k="min">–</td>
+    <td class="mono" data-k="avg">–</td>
+    <td class="mono" data-k="max">–</td>
+    <td class="mono" data-k="last">–</td>
+    <td class="mono samples" data-k="samples"></td>
+  `;
+  tbody.appendChild(tr);
+  return tr;
+}
+
+function updateRow(tr, stats){
+  tr.querySelector('[data-k="count"]').textContent = stats.count;
+  tr.querySelector('[data-k="min"]').textContent = stats.count ? formatMs(stats.min) : '–';
+  tr.querySelector('[data-k="avg"]').textContent = stats.count ? formatMs(stats.avg) : '–';
+  tr.querySelector('[data-k="max"]').textContent = stats.count ? formatMs(stats.max) : '–';
+  tr.querySelector('[data-k="last"]').textContent = stats.last != null ? formatMs(stats.last) : '–';
+  tr.querySelector('[data-k="samples"]').innerHTML =
+    stats.samples.map(v => `<span class="pill">${isNaN(v) ? 'ERR' : formatMs(v)}</span>`).join('');
+
+  // expose numeric fields for sorting
+  tr.dataset.count = String(stats.count || 0);
+  tr.dataset.min = isFinite(stats.min) ? String(stats.min) : '';
+  tr.dataset.avg = isFinite(stats.avg) ? String(stats.avg) : '';
+  tr.dataset.max = isFinite(stats.max) ? String(stats.max) : '';
+  tr.dataset.last = isFinite(stats.last) ? String(stats.last) : '';
+}
+
+async function timeOnce(url, timeoutMs){
+  const ctrl = new AbortController();
+  const t0 = performance.now();
+  const timer = setTimeout(()=>ctrl.abort('timeout'), timeoutMs);
+  activeControllers.add(ctrl);
+  try{
+    await fetch(url + (url.includes('?')?'&':'?') + 'cb=' + Math.random(), {
+      method:'GET', mode:'no-cors', cache:'no-store', signal: ctrl.signal, keepalive:false,
+    });
+    const t1 = performance.now();
+    return {ok:true, ms:(t1-t0)};
+  }catch(err){
+    return {ok:false, error:String(err)};
+  }finally{
+    clearTimeout(timer);
+    try{ ctrl.abort(); }catch{}
+    activeControllers.delete(ctrl);
+  }
+}
+
+async function measureTargetStream(target, runs, timeoutMs, onSample){
+  const url = `http://${target.host}/`;
+  const samples = [];
+  let min=Infinity, max=-Infinity, sum=0, last=null;
+  for(let i=0;i<runs;i++){
+    if(stopRequested) break;
+    const r = await timeOnce(url, timeoutMs);
+    if(r.ok){
+      const ms = r.ms;
+      samples.push(ms);
+      if(ms<min) min=ms; if(ms>max) max=ms; sum+=ms; last=ms;
+      onSample({count:samples.length, min, max, avg: sum/samples.length, last, samples});
+    } else {
+      // Represent error as NaN entry for visibility
+      samples.push(NaN);
+      onSample({count:samples.filter(n=>!isNaN(n)).length, min, max, avg: sum/Math.max(1,samples.filter(n=>!isNaN(n)).length), last, samples});
+    }
+  }
+}
+
+function parseTargetsInput(){
+  try{
+    const arr = JSON.parse(ta.value);
+    if(!Array.isArray(arr)) throw new Error('JSON root must be an array');
+    const cleaned = arr.map(x=>({region:String(x.region), host:String(x.host)}))
+                      .filter(x=>x.region && x.host);
+    if(cleaned.length===0) throw new Error('No valid entries with region+host');
+    return cleaned;
+  }catch(e){
+    alert('Invalid targets JSON: '+ e.message);
+    throw e;
+  }
+}
+
+function setBusy(busy){
+  btnRun.disabled = busy;
+  btnStop.disabled = !busy;
+  ta.disabled = busy;
+  runsInput.disabled = busy;
+  timeoutInput.disabled = busy;
+}
+
+btnRun.addEventListener('click', async ()=>{
+  stopRequested = false;
+  summary.textContent = 'Running…';
+  setBusy(true);
+  tbody.innerHTML = '';
+  const targets = parseTargetsInput();
+  const runs = Math.max(1, Math.min(100, Number(runsInput.value)||7));
+  const timeoutMs = Math.max(500, Number(timeoutInput.value)||5000);
+
+  // Build rows first
+  const rows = new Map();
+  targets.forEach(t=> rows.set(t.host, createRow(t)) );
+
+  // Run all targets in parallel, each sequentially runs N times and streams updates
+  const start = performance.now();
+  let completed = 0;
+
+  await Promise.all(targets.map(async t=>{
+    const tr = rows.get(t.host);
+    await measureTargetStream(t, runs, timeoutMs, stats=>{
+      updateRow(tr, stats);
+      if (sortState.col) applySort();      
+    });
+    completed++;
+    const pct = Math.round((completed/targets.length)*100);
+    const elapsed = Math.round(performance.now()-start);
+    summary.textContent = `Completed ${completed}/${targets.length} targets (${pct}%) in ${elapsed} ms`;
+  }));
+
+  setBusy(false);
+  summary.textContent += ' — Done.';
+});
+
+btnStop.addEventListener('click', ()=>{
+  stopRequested = true;
+  for(const c of activeControllers){ try{c.abort('stop');}catch{} }
+  activeControllers.clear();
+  setBusy(false);
+  summary.textContent += ' — Stopped.';
+});
+
+btnClear.addEventListener('click', ()=>{
+  tbody.innerHTML = '';
+  summary.textContent = 'Cleared.';
+});
+
+function clearSortIndicators(){
+  document.querySelectorAll('#table thead th .sort-ind').forEach(el => el.textContent = '');
+}
+
+function applySort(){
+  const rows = Array.from(document.querySelectorAll('#tbody tr'));
+  const { col, asc } = sortState;
+  if (!col) return;
+
+  const dir = asc ? 1 : -1;
+  const numericCols = new Set(['count','min','avg','max','last']);
+
+  rows.sort((a,b) => {
+    if (numericCols.has(col)) {
+      const av = parseFloat(a.dataset[col] || 'NaN');
+      const bv = parseFloat(b.dataset[col] || 'NaN');
+      const aNan = isNaN(av), bNan = isNaN(bv);
+      if (aNan && bNan) return 0;
+      if (aNan) return 1;       // NaNs to bottom
+      if (bNan) return -1;
+      return (av - bv) * dir;
+    } else {
+      const as = (a.dataset[col] || '').localeCompare(b.dataset[col] || '');
+      return as * dir;
+    }
+  });
+
+  const frag = document.createDocumentFragment();
+  rows.forEach(r => frag.appendChild(r));
+  document.getElementById('tbody').appendChild(frag);
+}
+
+function setSort(col){
+  if (sortState.col === col) sortState.asc = !sortState.asc;
+  else { sortState.col = col; sortState.asc = true; }
+  clearSortIndicators();
+  const th = document.querySelector(`#table thead th[data-col="${col}"] .sort-ind`);
+  if (th) th.textContent = sortState.asc ? '▲' : '▼';
+  applySort();
+}
+
+thead.addEventListener('click', (e) => {
+  const th = e.target.closest('th.sortable');
+  if (!th) return;
+  const col = th.getAttribute('data-col');
+  if (!col) return;
+  setSort(col);
+});
+
+</script></body>
+</html>
