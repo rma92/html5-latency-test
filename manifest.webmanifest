@@ -1,6 +1,6 @@
 {
-  "name": "Region Latency Tester",
-  "short_name": "Latency Tester",
+  "name": "AS207419 Ping Tester",
+  "short_name": "AS207419 PingTest",
   "start_url": "./index.html?source=pwa",
   "scope": "./",
   "display": "standalone",
