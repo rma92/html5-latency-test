@@ -4,6 +4,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0ea5e9">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <title>AS207419 Region HTTP Latency Tester</title>
   <style>
     :root{--bg:#0b1220;--panel:#111a2c;--muted:#7a8aa0;--text:#e6eef7;--accent:#7dd3fc;--good:#34d399;--warn:#f59e0b;--bad:#ef4444;--border:#1f2a44}
@@ -477,5 +481,8 @@ function setList(list, label, mode){
 btnAS.addEventListener('click',   () => setList(DEFAULT_TARGETS, 'AS207419', 'http'));
 btnVultr.addEventListener('click',()=> setList(LIST_VULTR,      'Vultr',    'https'));
 
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(console.error);
+}
 </script></body>
 </html>
