@@ -37,6 +37,9 @@
     .footer{color:var(--muted);font-size:.8rem;margin-top:14px}
     .samples{max-height:64px;overflow:auto;white-space:nowrap}
     .small{font-size:.85rem;color:var(--muted)}
+    th.sortable{cursor:pointer}
+    .sort-ind{opacity:.7;margin-left:4px}
+  
   </style>
 </head>
 <body>
@@ -73,13 +76,13 @@
         <table id="table">
           <thead>
             <tr>
-              <th style="min-width:180px">Region</th>
-              <th style="min-width:220px">Host</th>
-              <th>Count</th>
-              <th>Min (ms)</th>
-              <th>Avg (ms)</th>
-              <th>Max (ms)</th>
-              <th>Last (ms)</th>
+              <th class="sortable" data-col="region">Region <span class="sort-ind"></span></th>
+              <th class="sortable" data-col="host">Host <span class="sort-ind"></span></th>
+              <th class="sortable" data-col="count">Count <span class="sort-ind"></span></th>
+              <th class="sortable" data-col="min">Min (ms) <span class="sort-ind"></span></th>
+              <th class="sortable" data-col="avg">Avg (ms) <span class="sort-ind"></span></th>
+              <th class="sortable" data-col="max">Max (ms) <span class="sort-ind"></span></th>
+              <th class="sortable" data-col="last">Last (ms) <span class="sort-ind"></span></th>
               <th>Samples (ms)</th>
             </tr>
           </thead>
@@ -94,6 +97,7 @@
 
   </div><script>
 // --------- Default Vultr targets (region + host only) ---------
+  /*
 const DEFAULT_TARGETS = [
   {"region":"Johannesburg, ZA","host":"jnb-za-ping.vultr.com"},
   {"region":"Bangalore, IN","host":"blr-in-ping.vultr.com"},
@@ -128,6 +132,47 @@ const DEFAULT_TARGETS = [
   {"region":"Santiago, CL","host":"scl-cl-ping.vultr.com"},
   {"region":"São Paulo, BR","host":"sao-br-ping.vultr.com"}
 ];
+*/
+const DEFAULT_TARGETS = [
+  {"region":"🇿🇦 Johannesburg, ZA","host":"jnb-za-ping.vultr.com"},
+  {"region":"🇮🇳 Bangalore, IN","host":"blr-in-ping.vultr.com"},
+  {"region":"🇮🇳 Delhi NCR, IN","host":"del-in-ping.vultr.com"},
+  {"region":"🇮🇳 Mumbai, IN","host":"bom-in-ping.vultr.com"},
+  {"region":"🇯🇵 Osaka, JP","host":"osk-jp-ping.vultr.com"},
+  {"region":"🇰🇷 Seoul, KR","host":"sel-kor-ping.vultr.com"},
+  {"region":"🇸🇬 Singapore, SG","host":"sgp-ping.vultr.com"},
+  {"region":"🇮🇱 Tel Aviv, IL","host":"tlv-il-ping.vultr.com"},
+  {"region":"🇯🇵 Tokyo, JP","host":"hnd-jp-ping.vultr.com"},
+
+  {"region":"🇦🇺 Melbourne, AU","host":"mel-au-ping.vultr.com"},
+  {"region":"🇦🇺 Sydney, AU","host":"syd-au-ping.vultr.com"},
+
+  {"region":"🇳🇱 Amsterdam, NL","host":"ams-nl-ping.vultr.com"},
+  {"region":"🇩🇪 Frankfurt, DE","host":"fra-de-ping.vultr.com"},
+  {"region":"🇬🇧 London, UK","host":"lon-gb-ping.vultr.com"},
+  {"region":"🇪🇸 Madrid, ES","host":"mad-es-ping.vultr.com"},
+  {"region":"🇬🇧 Manchester, UK","host":"man-uk-ping.vultr.com"},
+  {"region":"🇫🇷 Paris, FR","host":"par-fr-ping.vultr.com"},
+  {"region":"🇸🇪 Stockholm, SE","host":"sto-se-ping.vultr.com"},
+  {"region":"🇵🇱 Warsaw, PL","host":"waw-pl-ping.vultr.com"},
+
+  {"region":"🇺🇸 Atlanta, GA, US","host":"ga-us-ping.vultr.com"},
+  {"region":"🇺🇸 Chicago, IL, US","host":"il-us-ping.vultr.com"},
+  {"region":"🇺🇸 Dallas, TX, US","host":"tx-us-ping.vultr.com"},
+  {"region":"🇺🇸 Honolulu, HI, US","host":"hon-hi-us-ping.vultr.com"},
+  {"region":"🇺🇸 Los Angeles, CA, US","host":"lax-ca-us-ping.vultr.com"},
+  {"region":"🇺🇸 Miami, FL, US","host":"fl-us-ping.vultr.com"},
+  {"region":"🇺🇸 New Jersey (NY Metro), US","host":"nj-us-ping.vultr.com"},
+  {"region":"🇺🇸 Seattle, WA, US","host":"wa-us-ping.vultr.com"},
+  {"region":"🇺🇸 Silicon Valley (SJ), US","host":"sjo-ca-us-ping.vultr.com"},
+
+  {"region":"🇨🇦 Toronto, CA","host":"tor-ca-ping.vultr.com"},
+  {"region":"🇲🇽 Mexico City, MX","host":"mex-mx-ping.vultr.com"},
+
+  {"region":"🇨🇱 Santiago, CL","host":"scl-cl-ping.vultr.com"},
+  {"region":"🇧🇷 São Paulo, BR","host":"sao-br-ping.vultr.com"}
+];
+
 
 // Try to read ?list= URL param with URL-encoded JSON
 function getListFromQuery(){
@@ -151,6 +196,9 @@ const btnStop = document.getElementById('btnStop');
 const btnClear = document.getElementById('btnClear');
 const tbody = document.getElementById('tbody');
 const summary = document.getElementById('summary');
+const thead = document.querySelector('#table thead');
+let sortState = { col: null, asc: true };
+
 
 // Initialize textarea
 const initialList = getListFromQuery() || DEFAULT_TARGETS;
@@ -182,11 +230,19 @@ function createRow(target){
 
 function updateRow(tr, stats){
   tr.querySelector('[data-k="count"]').textContent = stats.count;
-  tr.querySelector('[data-k="min"]').textContent = stats.count? formatMs(stats.min): '–';
-  tr.querySelector('[data-k="avg"]').textContent = stats.count? formatMs(stats.avg): '–';
-  tr.querySelector('[data-k="max"]').textContent = stats.count? formatMs(stats.max): '–';
-  tr.querySelector('[data-k="last"]').textContent = stats.last != null? formatMs(stats.last): '–';
-  tr.querySelector('[data-k="samples"]').innerHTML = stats.samples.map(v=>`<span class="pill">${formatMs(v)}</span>`).join('');
+  tr.querySelector('[data-k="min"]').textContent = stats.count ? formatMs(stats.min) : '–';
+  tr.querySelector('[data-k="avg"]').textContent = stats.count ? formatMs(stats.avg) : '–';
+  tr.querySelector('[data-k="max"]').textContent = stats.count ? formatMs(stats.max) : '–';
+  tr.querySelector('[data-k="last"]').textContent = stats.last != null ? formatMs(stats.last) : '–';
+  tr.querySelector('[data-k="samples"]').innerHTML =
+    stats.samples.map(v => `<span class="pill">${isNaN(v) ? 'ERR' : formatMs(v)}</span>`).join('');
+
+  // expose numeric fields for sorting
+  tr.dataset.count = String(stats.count || 0);
+  tr.dataset.min = isFinite(stats.min) ? String(stats.min) : '';
+  tr.dataset.avg = isFinite(stats.avg) ? String(stats.avg) : '';
+  tr.dataset.max = isFinite(stats.max) ? String(stats.max) : '';
+  tr.dataset.last = isFinite(stats.last) ? String(stats.last) : '';
 }
 
 async function timeOnce(url, timeoutMs){
@@ -272,6 +328,7 @@ btnRun.addEventListener('click', async ()=>{
     const tr = rows.get(t.host);
     await measureTargetStream(t, runs, timeoutMs, stats=>{
       updateRow(tr, stats);
+      if (sortState.col) applySort();      
     });
     completed++;
     const pct = Math.round((completed/targets.length)*100);
@@ -295,5 +352,55 @@ btnClear.addEventListener('click', ()=>{
   tbody.innerHTML = '';
   summary.textContent = 'Cleared.';
 });
+
+function clearSortIndicators(){
+  document.querySelectorAll('#table thead th .sort-ind').forEach(el => el.textContent = '');
+}
+
+function applySort(){
+  const rows = Array.from(document.querySelectorAll('#tbody tr'));
+  const { col, asc } = sortState;
+  if (!col) return;
+
+  const dir = asc ? 1 : -1;
+  const numericCols = new Set(['count','min','avg','max','last']);
+
+  rows.sort((a,b) => {
+    if (numericCols.has(col)) {
+      const av = parseFloat(a.dataset[col] || 'NaN');
+      const bv = parseFloat(b.dataset[col] || 'NaN');
+      const aNan = isNaN(av), bNan = isNaN(bv);
+      if (aNan && bNan) return 0;
+      if (aNan) return 1;       // NaNs to bottom
+      if (bNan) return -1;
+      return (av - bv) * dir;
+    } else {
+      const as = (a.dataset[col] || '').localeCompare(b.dataset[col] || '');
+      return as * dir;
+    }
+  });
+
+  const frag = document.createDocumentFragment();
+  rows.forEach(r => frag.appendChild(r));
+  document.getElementById('tbody').appendChild(frag);
+}
+
+function setSort(col){
+  if (sortState.col === col) sortState.asc = !sortState.asc;
+  else { sortState.col = col; sortState.asc = true; }
+  clearSortIndicators();
+  const th = document.querySelector(`#table thead th[data-col="${col}"] .sort-ind`);
+  if (th) th.textContent = sortState.asc ? '▲' : '▼';
+  applySort();
+}
+
+thead.addEventListener('click', (e) => {
+  const th = e.target.closest('th.sortable');
+  if (!th) return;
+  const col = th.getAttribute('data-col');
+  if (!col) return;
+  setSort(col);
+});
+
 </script></body>
 </html>
